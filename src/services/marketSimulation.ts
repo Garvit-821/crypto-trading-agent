@@ -1,3 +1,5 @@
+import axios from 'axios';
+
 const CRYPTO_PAIRS = [
   'BTC/USDT', 'ETH/USDT', 'BNB/USDT', 'XRP/USDT', 'ADA/USDT',
   'DOGE/USDT', 'SOL/USDT', 'DOT/USDT', 'MATIC/USDT', 'LTC/USDT',
@@ -10,6 +12,60 @@ const CRYPTO_PAIRS = [
   'ZEC/USDT', 'RUNE/USDT', 'MKR/USDT', 'SNX/USDT', 'COMP/USDT',
   'CRV/USDT', 'SUSHI/USDT', 'YFI/USDT', '1INCH/USDT', 'BAT/USDT'
 ];
+
+// Map trading pairs to CoinGecko coin IDs
+const COINGECKO_IDS: Record<string, string> = {
+  'BTC/USDT': 'bitcoin',
+  'ETH/USDT': 'ethereum',
+  'BNB/USDT': 'binancecoin',
+  'XRP/USDT': 'ripple',
+  'ADA/USDT': 'cardano',
+  'DOGE/USDT': 'dogecoin',
+  'SOL/USDT': 'solana',
+  'DOT/USDT': 'polkadot',
+  'MATIC/USDT': 'matic-network',
+  'LTC/USDT': 'litecoin',
+  'AVAX/USDT': 'avalanche-2',
+  'LINK/USDT': 'chainlink',
+  'UNI/USDT': 'uniswap',
+  'ATOM/USDT': 'cosmos',
+  'XLM/USDT': 'stellar',
+  'ALGO/USDT': 'algorand',
+  'VET/USDT': 'vechain',
+  'FIL/USDT': 'filecoin',
+  'TRX/USDT': 'tron',
+  'ETC/USDT': 'ethereum-classic',
+  'NEAR/USDT': 'near',
+  'AAVE/USDT': 'aave',
+  'SAND/USDT': 'the-sandbox',
+  'MANA/USDT': 'decentraland',
+  'AXS/USDT': 'axie-infinity',
+  'FTM/USDT': 'fantom',
+  'HBAR/USDT': 'hedera-hashgraph',
+  'EGLD/USDT': 'elrond-erd-2',
+  'XTZ/USDT': 'tezos',
+  'THETA/USDT': 'theta-token',
+  'ICP/USDT': 'internet-computer',
+  'EOS/USDT': 'eos',
+  'FLOW/USDT': 'flow',
+  'APE/USDT': 'apecoin',
+  'CHZ/USDT': 'chiliz',
+  'CAKE/USDT': 'pancakeswap-token',
+  'GRT/USDT': 'the-graph',
+  'ENJ/USDT': 'enjincoin',
+  'QNT/USDT': 'quant-network',
+  'KSM/USDT': 'kusama',
+  'ZEC/USDT': 'zcash',
+  'RUNE/USDT': 'thorchain',
+  'MKR/USDT': 'maker',
+  'SNX/USDT': 'havven',
+  'COMP/USDT': 'compound-governance-token',
+  'CRV/USDT': 'curve-dao-token',
+  'SUSHI/USDT': 'sushi',
+  'YFI/USDT': 'yearn-finance',
+  '1INCH/USDT': '1inch',
+  'BAT/USDT': 'basic-attention-token'
+};
 
 const CONDITION_TYPES = [
   { type: 'EMA Crossover', message: 'EMA crossover detected' },
@@ -41,49 +97,72 @@ export interface AlertTrigger {
 
 export class MarketSimulator {
   private marketData: Map<string, MarketData> = new Map();
-  private basePrice: Map<string, number> = new Map();
+  private isUpdating = false;
 
   constructor() {
     this.initializeMarketData();
   }
 
-  private initializeMarketData() {
+  private async initializeMarketData() {
+    // Initialize with empty data first, then fetch real data
     CRYPTO_PAIRS.forEach(coin => {
-      const basePrice = this.generateBasePrice(coin);
-      this.basePrice.set(coin, basePrice);
-
       this.marketData.set(coin, {
         coin,
-        price: basePrice,
-        change24h: (Math.random() - 0.5) * 20,
-        volume: Math.random() * 1000000000,
+        price: 0,
+        change24h: 0,
+        volume: 0,
         lastUpdate: new Date()
       });
     });
+    // Fetch real data immediately
+    await this.fetchRealMarketData();
   }
 
-  private generateBasePrice(coin: string): number {
-    if (coin.startsWith('BTC')) return 42000 + Math.random() * 1000;
-    if (coin.startsWith('ETH')) return 2200 + Math.random() * 100;
-    if (coin.startsWith('BNB')) return 300 + Math.random() * 20;
-    if (coin.startsWith('SOL')) return 90 + Math.random() * 10;
-    if (coin.startsWith('XRP')) return 0.5 + Math.random() * 0.1;
-    if (coin.startsWith('ADA')) return 0.4 + Math.random() * 0.05;
-    if (coin.startsWith('DOGE')) return 0.08 + Math.random() * 0.01;
-    return Math.random() * 100;
+  private async fetchRealMarketData() {
+    if (this.isUpdating) return;
+    this.isUpdating = true;
+
+    try {
+      // Get all CoinGecko IDs
+      const coinIds = CRYPTO_PAIRS.map(pair => COINGECKO_IDS[pair]).filter(Boolean);
+      
+      // Fetch data from CoinGecko API
+      const response = await axios.get(
+        `https://api.coingecko.com/api/v3/simple/price?ids=${coinIds.join(',')}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true`,
+        {
+          timeout: 10000,
+          headers: {
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      const data = response.data;
+
+      // Update market data with real prices
+      CRYPTO_PAIRS.forEach(pair => {
+        const coinId = COINGECKO_IDS[pair];
+        if (coinId && data[coinId]) {
+          const coinData = data[coinId];
+          this.marketData.set(pair, {
+            coin: pair,
+            price: coinData.usd || 0,
+            change24h: coinData.usd_24h_change || 0,
+            volume: coinData.usd_24h_vol || 0,
+            lastUpdate: new Date()
+          });
+        }
+      });
+    } catch (error) {
+      console.error('Error fetching market data from CoinGecko:', error);
+      // If API fails, keep existing data or set defaults
+    } finally {
+      this.isUpdating = false;
+    }
   }
 
-  updateMarketData() {
-    this.marketData.forEach((data, coin) => {
-      const basePrice = this.basePrice.get(coin) || data.price;
-      const volatility = 0.002;
-      const change = (Math.random() - 0.5) * volatility;
-
-      data.price = basePrice * (1 + change);
-      data.change24h += (Math.random() - 0.5) * 0.5;
-      data.volume = data.volume * (1 + (Math.random() - 0.5) * 0.1);
-      data.lastUpdate = new Date();
-    });
+  async updateMarketData() {
+    await this.fetchRealMarketData();
   }
 
   getMarketData(coin: string): MarketData | undefined {
@@ -101,7 +180,7 @@ export class MarketSimulator {
     const condition = CONDITION_TYPES[Math.floor(Math.random() * CONDITION_TYPES.length)];
     const marketData = this.marketData.get(coin);
 
-    if (!marketData) return null;
+    if (!marketData || marketData.price === 0) return null;
 
     const entryPrice = marketData.price;
     const stopLossPercent = 0.02 + Math.random() * 0.03;

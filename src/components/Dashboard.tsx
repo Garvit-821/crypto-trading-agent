@@ -44,8 +44,8 @@ export function Dashboard() {
     });
   };
 
-  const updateMarketData = () => {
-    marketSimulator.updateMarketData();
+  const updateMarketData = async () => {
+    await marketSimulator.updateMarketData();
     const allData = marketSimulator.getAllMarketData();
     const sorted = allData.sort((a, b) => Math.abs(b.change24h) - Math.abs(a.change24h));
     setTopCoins(sorted.slice(0, 8));

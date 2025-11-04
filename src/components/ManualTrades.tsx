@@ -31,21 +31,62 @@ export function ManualTrades() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation
+    if (!formData.coin_name || !formData.coin_name.trim()) {
+      alert('Please enter a coin name (e.g., BTC/USDT)');
+      return;
+    }
+
+    if (!formData.entry_price || parseFloat(formData.entry_price) <= 0) {
+      alert('Please enter a valid entry price greater than 0');
+      return;
+    }
+
+    if (!formData.stop_loss || parseFloat(formData.stop_loss) <= 0) {
+      alert('Please enter a valid stop loss greater than 0');
+      return;
+    }
+
+    if (!formData.target_price || parseFloat(formData.target_price) <= 0) {
+      alert('Please enter a valid target price greater than 0');
+      return;
+    }
+
     setSending(true);
+
+    const entryPrice = parseFloat(formData.entry_price);
+    const stopLoss = parseFloat(formData.stop_loss);
+    const targetPrice = parseFloat(formData.target_price);
 
     const { data, error } = await supabase
       .from('manual_trades')
       .insert([{
-        coin_name: formData.coin_name,
-        entry_price: parseFloat(formData.entry_price),
-        stop_loss: parseFloat(formData.stop_loss),
-        target_price: parseFloat(formData.target_price),
-        message: formData.message
+        coin_name: formData.coin_name.trim(),
+        entry_price: entryPrice,
+        stop_loss: stopLoss,
+        target_price: targetPrice,
+        message: formData.message.trim() || null
       }])
       .select()
       .single();
 
-    if (data && !error) {
+    if (error) {
+      console.error('Error creating manual trade:', error);
+      console.error('Full error details:', JSON.stringify(error, null, 2));
+      console.error('Trade data being inserted:', {
+        coin_name: formData.coin_name.trim(),
+        entry_price: entryPrice,
+        stop_loss: stopLoss,
+        target_price: targetPrice,
+        message: formData.message.trim() || null
+      });
+      alert(`Failed to create manual trade: ${error.message}\n\nCheck console for details.`);
+      setSending(false);
+      return;
+    }
+
+    if (data) {
       setTrades(prev => [data, ...prev]);
       setFormData({
         coin_name: '',
@@ -54,6 +95,7 @@ export function ManualTrades() {
         target_price: '',
         message: ''
       });
+      alert('Manual trade broadcasted successfully!');
     }
 
     setSending(false);

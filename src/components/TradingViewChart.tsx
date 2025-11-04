@@ -1,0 +1,153 @@
+import { useEffect, useRef, useState } from 'react';
+import { createChart, IChartApi, ISeriesApi, ColorType } from 'lightweight-charts';
+import { Loader2 } from 'lucide-react';
+
+export type AssetType = 'crypto' | 'forex' | 'stock' | 'commodity';
+
+export interface TradingViewChartProps {
+  symbol: string;
+  assetType: AssetType;
+  exchange?: string;
+  height?: number;
+  onPriceUpdate?: (price: number) => void;
+}
+
+
+export function TradingViewChart({
+  symbol,
+  assetType,
+  exchange,
+  height = 500,
+  onPriceUpdate,
+}: TradingViewChartProps) {
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+
+    // Create chart
+    const chart = createChart(chartContainerRef.current, {
+      layout: {
+        background: { type: ColorType.Solid, color: '#131722' },
+        textColor: '#d1d4dc',
+      },
+      grid: {
+        vertLines: { color: '#1e222d' },
+        horzLines: { color: '#1e222d' },
+      },
+      width: chartContainerRef.current.clientWidth,
+      height: height,
+      timeScale: {
+        timeVisible: true,
+        secondsVisible: false,
+        borderColor: '#2B2B43',
+      },
+      rightPriceScale: {
+        borderColor: '#2B2B43',
+      },
+    });
+
+    const candlestickSeries = chart.addCandlestickSeries({
+      upColor: '#26a69a',
+      downColor: '#ef5350',
+      borderVisible: false,
+      wickUpColor: '#26a69a',
+      wickDownColor: '#ef5350',
+    });
+
+    chartRef.current = chart;
+    seriesRef.current = candlestickSeries;
+
+    // Fetch initial data
+    loadChartData();
+
+    // Handle resize
+    const handleResize = () => {
+      if (chartContainerRef.current && chartRef.current) {
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+        });
+      }
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    // Real-time updates (simulated - replace with actual WebSocket/API)
+    const updateInterval = setInterval(() => {
+      updateChartData();
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      clearInterval(updateInterval);
+      chart.remove();
+    };
+  }, [symbol, assetType, exchange]);
+
+  const loadChartData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Import data service dynamically
+      const { fetchChartData } = await import('../services/dataFeed');
+      const data = await fetchChartData(symbol, assetType, exchange);
+
+      if (seriesRef.current && data.length > 0) {
+        seriesRef.current.setData(data);
+        
+        // Update price callback
+        if (onPriceUpdate && data.length > 0) {
+          const latestPrice = data[data.length - 1].close;
+          onPriceUpdate(latestPrice);
+        }
+      }
+
+      setLoading(false);
+    } catch (err: any) {
+      setError(err.message || 'Failed to load chart data');
+      setLoading(false);
+    }
+  };
+
+  const updateChartData = async () => {
+    try {
+      const { fetchLatestCandle } = await import('../services/dataFeed');
+      const latestCandle = await fetchLatestCandle(symbol, assetType, exchange);
+
+      if (seriesRef.current && latestCandle) {
+        seriesRef.current.update(latestCandle);
+        
+        if (onPriceUpdate) {
+          onPriceUpdate(latestCandle.close);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to update chart:', err);
+    }
+  };
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-full bg-gray-900 text-red-400 p-4 rounded">
+        <span>{error}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative w-full bg-gray-900 rounded-lg overflow-hidden">
+      {loading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-900/80 z-10">
+          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        </div>
+      )}
+      <div ref={chartContainerRef} style={{ height: `${height}px` }} />
+    </div>
+  );
+}
+

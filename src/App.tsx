@@ -1,30 +1,107 @@
 import { useState, useEffect } from 'react';
-import { LayoutDashboard, TrendingUp, Send, Brain, Wifi } from 'lucide-react';
+import { LayoutDashboard, TrendingUp, Bell, Settings, LogOut, User, Zap } from 'lucide-react';
+import { supabase } from './lib/supabase';
+import { Login } from './components/Auth/Login';
+import { Signup } from './components/Auth/Signup';
+import { MarketDashboard } from './components/MarketDashboard';
+import { AlertsManager } from './components/AlertsManager';
 import { Dashboard } from './components/Dashboard';
-import { StrategyAlerts } from './components/StrategyAlerts';
 import { ManualTrades } from './components/ManualTrades';
 import { AIStrategyBuilder } from './components/AIStrategyBuilder';
+import { UserDashboard } from './components/UserDashboard';
 
-type View = 'dashboard' | 'alerts' | 'manual' | 'ai';
+type View = 'dashboard' | 'trading' | 'alerts' | 'manual' | 'ai' | 'settings' | 'userfeed';
+type AuthView = 'login' | 'signup';
 
 function App() {
-  const [currentView, setCurrentView] = useState<View>('dashboard');
-  const [isConnected, setIsConnected] = useState(false);
+  const [currentView, setCurrentView] = useState<View>('userfeed');
+  const [authView, setAuthView] = useState<AuthView>('login');
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setTimeout(() => setIsConnected(true), 500);
+    // Check auth state
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
-  const menuItems = [
+  // Separate effect to handle admin page access
+  useEffect(() => {
+    if (user) {
+      const isAdminUser = user.email === 'crypto@crypto.com';
+      const isAdminPage = ['alerts', 'manual', 'ai'].includes(currentView);
+      if (!isAdminUser && isAdminPage) {
+        setCurrentView('userfeed');
+      }
+    }
+  }, [user, currentView]);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentView('userfeed');
+  };
+
+  // Check if user is admin (crypto@crypto.com)
+  const isAdmin = user?.email === 'crypto@crypto.com';
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-600">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        {authView === 'login' ? (
+          <Login
+            onSuccess={() => {}}
+            onSwitchToSignup={() => setAuthView('signup')}
+          />
+        ) : (
+          <Signup
+            onSuccess={() => {}}
+            onSwitchToLogin={() => setAuthView('login')}
+          />
+        )}
+      </>
+    );
+  }
+
+  // Menu items based on user role
+  const userMenuItems = [
+    { id: 'userfeed' as View, label: 'Trading Feed', icon: Zap },
+    { id: 'trading' as View, label: 'Trading', icon: TrendingUp },
     { id: 'dashboard' as View, label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'alerts' as View, label: 'Strategy Alerts', icon: TrendingUp },
-    { id: 'manual' as View, label: 'Manual Trades', icon: Send },
-    { id: 'ai' as View, label: 'AI Strategy Builder', icon: Brain }
   ];
+
+  const adminMenuItems = [
+    { id: 'alerts' as View, label: 'Alerts', icon: Bell },
+    { id: 'manual' as View, label: 'Manual Trades', icon: LayoutDashboard },
+    { id: 'ai' as View, label: 'AI Strategy', icon: LayoutDashboard },
+  ];
+
+  const menuItems = isAdmin 
+    ? [...userMenuItems, ...adminMenuItems]
+    : userMenuItems;
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <div className="flex h-screen">
+        {/* Sidebar */}
         <aside className="w-64 bg-white border-r border-gray-200 flex flex-col shadow-sm">
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center space-x-3">
@@ -38,20 +115,15 @@ function App() {
             </div>
           </div>
 
-          <div className="p-4 border-b border-gray-200">
-            <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-all ${isConnected ? 'bg-green-50 border border-green-200' : 'bg-gray-100'}`}>
-              <Wifi className={`w-4 h-4 ${isConnected ? 'text-green-600' : 'text-gray-400'}`} />
-              <span className={`text-sm font-medium ${isConnected ? 'text-green-700' : 'text-gray-600'}`}>
-                {isConnected ? 'Connected' : 'Connecting...'}
-              </span>
-              {isConnected && <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse ml-auto" />}
-            </div>
-          </div>
-
           <nav className="flex-1 p-4 space-y-2">
             {menuItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentView === item.id;
+              // Prevent non-admin from accessing admin pages
+              const isAdminPage = ['alerts', 'manual', 'ai'].includes(item.id);
+              if (isAdminPage && !isAdmin) {
+                return null; // Don't render admin menu items for non-admin users
+              }
               return (
                 <button
                   key={item.id}
@@ -69,25 +141,124 @@ function App() {
             })}
           </nav>
 
-          <div className="p-4 border-t border-gray-200">
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="text-sm font-semibold text-gray-900 mb-1">System Status</h3>
-              <p className="text-xs text-gray-600">All modules operational</p>
-              <div className="mt-3 flex items-center justify-between text-xs">
-                <span className="text-gray-600">Uptime</span>
-                <span className="text-green-600 font-semibold">99.9%</span>
+          {/* User Section */}
+          <div className="p-4 border-t border-gray-200 space-y-2">
+            <div className="flex items-center space-x-3 px-4 py-2 bg-gray-50 rounded-lg">
+              <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center">
+                <User className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 truncate">
+                  {user.email?.split('@')[0] || 'User'}
+                </p>
+                <p className="text-xs text-gray-500 truncate">{user.email}</p>
               </div>
             </div>
+
+            <button
+              onClick={() => setCurrentView('settings')}
+              className="w-full flex items-center space-x-3 px-4 py-2 text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-lg transition-all"
+            >
+              <Settings className="w-5 h-5" />
+              <span className="font-medium">Settings</span>
+            </button>
+
+            <button
+              onClick={handleLogout}
+              className="w-full flex items-center space-x-3 px-4 py-2 text-red-600 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all"
+            >
+              <LogOut className="w-5 h-5" />
+              <span className="font-medium">Logout</span>
+            </button>
           </div>
         </aside>
 
-        <main className="flex-1 overflow-y-auto bg-gray-50">
-          <div className="p-8">
-            {currentView === 'dashboard' && <Dashboard />}
-            {currentView === 'alerts' && <StrategyAlerts />}
-            {currentView === 'manual' && <ManualTrades />}
-            {currentView === 'ai' && <AIStrategyBuilder />}
-          </div>
+        {/* Main Content */}
+        <main className="flex-1 overflow-hidden bg-gray-50">
+          {currentView === 'userfeed' && (
+            <div className="h-full overflow-y-auto">
+              <UserDashboard />
+            </div>
+          )}
+          {currentView === 'trading' && <MarketDashboard />}
+          {currentView === 'dashboard' && (
+            <div className="h-full overflow-y-auto">
+              <div className="p-8">
+                <Dashboard />
+              </div>
+            </div>
+          )}
+          {currentView === 'alerts' && isAdmin && <AlertsManager />}
+          {currentView === 'manual' && isAdmin && (
+            <div className="h-full overflow-y-auto">
+              <div className="p-8">
+                <ManualTrades />
+              </div>
+            </div>
+          )}
+          {currentView === 'ai' && isAdmin && (
+            <div className="h-full overflow-y-auto">
+              <div className="p-8">
+                <AIStrategyBuilder />
+              </div>
+            </div>
+          )}
+          {/* Redirect non-admin users away from admin pages */}
+          {!isAdmin && (currentView === 'alerts' || currentView === 'manual' || currentView === 'ai') && (
+            <div className="h-full overflow-y-auto flex items-center justify-center">
+              <div className="text-center">
+                <p className="text-gray-600 text-lg">Access Denied</p>
+                <p className="text-gray-500 mt-2">You don't have permission to access this page.</p>
+                <button
+                  onClick={() => setCurrentView('userfeed')}
+                  className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                >
+                  Go to Trading Feed
+                </button>
+              </div>
+            </div>
+          )}
+          {currentView === 'settings' && (
+            <div className="h-full overflow-y-auto">
+              <div className="p-8">
+                <div className="max-w-4xl">
+                  <h2 className="text-2xl font-bold mb-6 text-gray-900">Settings</h2>
+                  <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm">
+                    <h3 className="text-lg font-semibold mb-4 text-gray-900">Account Settings</h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Email
+                        </label>
+                        <input
+                          type="email"
+                          value={user.email || ''}
+                          disabled
+                          className="w-full px-4 py-2 bg-gray-50 border border-gray-300 rounded-lg text-gray-900"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Telegram Chat ID (for alerts)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Enter your Telegram chat ID"
+                          className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500"
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Get your chat ID from @userinfobot on Telegram
+                        </p>
+                      </div>
+                      <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+                        Save Settings
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </main>
       </div>
     </div>
